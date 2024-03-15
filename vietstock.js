@@ -1,5 +1,6 @@
 import puppeteer from "puppeteer";
 import dotenv from "dotenv";
+import slugify from "slugify";
 
 dotenv.config();
 const chromePath =
@@ -22,6 +23,16 @@ const login = async (page, email, password) => {
   console.info("logged in successfully");
 };
 
+const getCompanyFinanceData = async (page, code, name) => {
+  console.info("fetching data for ", name);
+  const url = `https://finance.vietstock.vn/${code}-${slugify(name)}.htm`;
+  await page.goto(url, { timeout: 60000 });
+  let nextBtn = await page.waitForSelector(`a[href="/${code}/tai-chinh.htm"]`);
+  await nextBtn.evaluate((btn) => btn.click());
+  nextBtn = await page.waitForSelector('a[href="?tab=CSTC"]');
+  await nextBtn.evaluate((btn) => btn.click());
+};
+
 (async () => {
   // Launch the browser and open a new blank page
   const browser = await puppeteer.launch(
@@ -33,4 +44,5 @@ const login = async (page, email, password) => {
   page.setDefaultTimeout(5000);
   await page.setViewport({ width: 1280, height: 1024 });
   await login(page, process.env.EMAIL, process.env.PSSWD);
+  await getCompanyFinanceData(page, "VNM", "Vinamilk");
 })();
