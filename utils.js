@@ -17,5 +17,8 @@ const readCSVToArray = async (filePath) => {
 const filePath = "./data/companies.csv";
 export const getCompanies = async () => {
   const data = await readCSVToArray(filePath);
-  return data.map((company) => company["ISIN"]);
+  return data.map((company) => ({
+    code: company["Code"],
+    name: company["Name"],
+  }));
 };

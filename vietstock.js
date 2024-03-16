@@ -2,17 +2,20 @@ import puppeteer from "puppeteer";
 import dotenv from "dotenv";
 import slugify from "slugify";
 import fs from "fs/promises";
+import { getCompanies } from "./utils.js";
 
 dotenv.config();
 const chromePath =
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const waitFor = async (milisec) => {
+  return await new Promise((resolve) => setTimeout(resolve, milisec));
+};
 
 const login = async (page, email, password) => {
   console.info("loggin in as ", email);
   page.goto("https://finance.vietstock.vn/", { timeout: 60000 });
   const loginBtn = await page.waitForSelector("#btn-request-call-login");
-  await new Promise((resolve) => setTimeout(resolve, 5000));
-
+  await waitFor(5000);
   await loginBtn.evaluate((btn) => btn.click());
   await page.waitForSelector("#content-login-form-input");
   await page.type('#content-login-form-input input[name="Email"]', email);
@@ -27,40 +30,47 @@ const login = async (page, email, password) => {
 const getCompanyFinanceData = async (page, code, name) => {
   console.info("fetching data for ", name);
   const url = `https://finance.vietstock.vn/${code}-${slugify(name)}.htm`;
-  await page.goto(url, { timeout: 60000 });
+  page.goto(url, { timeout: 60000 });
   let nextBtn = await page.waitForSelector(`a[href="/${code}/tai-chinh.htm"]`);
+
   await nextBtn.evaluate((btn) => btn.click());
+
   nextBtn = await page.waitForSelector('a[href="?tab=CSTC"]');
   await nextBtn.evaluate((btn) => btn.click());
   const periodSelect = await page.waitForSelector('select[name="period"]');
   await page.evaluate(() => {
     window.scrollTo(0, document.body.scrollHeight);
   });
-  const waitResponse = page.waitForResponse((response) =>
-    response.url().includes("/GetFinanceIndexDataValue_CSTC_ByListTerms")
-  );
+  const reqs = [
+    "CSTC_GetListTerms",
+    "GetListReportNorm_CSTC_ByStockCode",
+    "GetFinanceIndexDataValue_CSTC_ByListTerms",
+  ];
+  const pendingRequests = reqs.map((req) => {
+    return page.waitForResponse((response) => response.url().includes(req));
+  });
   await periodSelect.evaluate((select) => {
     select.value = "9";
-    select.dispatchEvent(new Event("change"));
+    const evt = new Event("change", { bubbles: true });
+    evt.simulated = true;
+    select.dispatchEvent(evt);
   });
-  await waitResponse;
+  await Promise.all(pendingRequests);
+  await waitFor(500);
   await (
     await page.waitForSelector("#dropdownMenuButton")
   ).evaluate((btn) => btn.click());
+
   const copyBtn = await page.waitForSelector("::-p-text(Sao chép)");
   await copyBtn.evaluate((btn) => btn.click());
-
-  // console.log(".>>> test ");
-  // const clipboardData = await page.evaluate(() => {
-  //   const test = navigator.clipboard.readText();
-  //   console.log(test);
-  //   return test;
-  // });
-  // console.log("Clipboard data:", clipboardData);
+  const clipboardData = await page.evaluate(() => {
+    const test = navigator.clipboard.readText();
+    return test;
+  });
+  console.log(clipboardData);
   // // Write clipboardData as a tab delimited CSV file
-  // await fs.writeFile(`./data/${code}-CSTC.csv`, clipboardData);
-
-  // console.log("CSV file created successfully");
+  await fs.writeFile(`./data/${code}-CSTC.csv`, clipboardData);
+  console.log("CSV file created successfully");
 };
 
 (async () => {
@@ -75,10 +85,16 @@ const getCompanyFinanceData = async (page, code, name) => {
     "clipboard-read",
   ]);
   const page = await browser.newPage();
-  page.setDefaultTimeout(5000);
+  page.setDefaultTimeout(10000);
   await page.setViewport({ width: 1280, height: 1024 });
   await login(page, process.env.EMAIL, process.env.PSSWD);
-  await getCompanyFinanceData(page, "VNM", "Vinamilk");
+  // const companies = await getCompanies();
+  // for (const company of companies) {
+  //   await getCompanyFinanceData(page, company.code, company.name);
+  // }
+  await getCompanyFinanceData(page, "AAA", "Công ty Cổ phần Nhựa An Phát Xanh");
+
+  await page.close();
 })();
 
 // {
