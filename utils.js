@@ -1,4 +1,5 @@
 import fs from "fs";
+import fsp from "fs/promises";
 import csv from "csv-parser";
 
 const readCSVToArray = async (filePath) => {
@@ -22,3 +23,10 @@ export const getCompanies = async () => {
     name: company["Name"],
   }));
 };
+export async function doesFileExist(path) {
+  try {
+    return (await fsp.stat(path)).isFile();
+  } catch (e) {
+    return false;
+  }
+}

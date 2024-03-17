@@ -2,7 +2,7 @@ import puppeteer from "puppeteer";
 import dotenv from "dotenv";
 import slugify from "slugify";
 import fs from "fs/promises";
-import { getCompanies } from "./utils.js";
+import { getCompanies, doesFileExist } from "./utils.js";
 
 dotenv.config();
 const chromePath =
@@ -28,6 +28,11 @@ const login = async (page, email, password) => {
 };
 
 const getCompanyFinanceData = async (page, code, name) => {
+  const outputFile = `./data/${code}-CSTC.csv`;
+  if (await doesFileExist(outputFile)) {
+    console.log("Output file already exists");
+    return;
+  }
   console.info("fetching data for ", name);
   const url = `https://finance.vietstock.vn/${code}-${slugify(name)}.htm`;
   page.goto(url, { timeout: 60000 });
@@ -56,7 +61,7 @@ const getCompanyFinanceData = async (page, code, name) => {
     select.dispatchEvent(evt);
   });
   await Promise.all(pendingRequests);
-  await waitFor(500);
+  await waitFor(1200);
   await (
     await page.waitForSelector("#dropdownMenuButton")
   ).evaluate((btn) => btn.click());
@@ -67,9 +72,8 @@ const getCompanyFinanceData = async (page, code, name) => {
     const test = navigator.clipboard.readText();
     return test;
   });
-  console.log(clipboardData);
   // // Write clipboardData as a tab delimited CSV file
-  await fs.writeFile(`./data/${code}-CSTC.csv`, clipboardData);
+  await fs.writeFile(outputFile, clipboardData);
   console.log("CSV file created successfully");
 };
 
@@ -77,24 +81,28 @@ const getCompanyFinanceData = async (page, code, name) => {
   // Launch the browser and open a new blank page
   const browser = await puppeteer.launch(
     process.env.UI
-      ? { headless: false, executablePath: chromePath }
-      : { headless: true }
+      ? {
+          headless: false,
+          executablePath: chromePath,
+          args: ["--disable-features=site-per-process"],
+        }
+      : { headless: true, args: ["--disable-features=site-per-process"] }
   );
   const context = browser.defaultBrowserContext();
   await context.overridePermissions("https://finance.vietstock.vn", [
     "clipboard-read",
   ]);
   const page = await browser.newPage();
-  page.setDefaultTimeout(10000);
+  page.setDefaultTimeout(60000);
   await page.setViewport({ width: 1280, height: 1024 });
   await login(page, process.env.EMAIL, process.env.PSSWD);
-  // const companies = await getCompanies();
-  // for (const company of companies) {
-  //   await getCompanyFinanceData(page, company.code, company.name);
-  // }
-  await getCompanyFinanceData(page, "AAA", "Công ty Cổ phần Nhựa An Phát Xanh");
+  const companies = await getCompanies();
+  for (const company of companies) {
+    await getCompanyFinanceData(page, company.code, company.name);
+  }
+  // await getCompanyFinanceData(page, "TCH", "Công ty Cổ phần Nhựa An Phát Xanh");
 
-  await page.close();
+  // await page.close();
 })();
 
 // {
